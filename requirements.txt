@@ -1,0 +1,7 @@
+python-telegram-bot==21.6
+paramiko==3.4.0
+python-dotenv==1.0.1
+
+# Lưu ý: `sshpass` KHÔNG phải Python package — cần cài bằng package manager
+# của hệ điều hành TRÊN NMS SERVER (không phải trên máy chạy bot), chỉ bắt
+# buộc nếu có thiết bị xác thực bằng password (xem README).

@@ -1,0 +1,4 @@
+hostname,management_ip,vendor,model,role,province,ssh_user,description,key_type,alias
+AAAA,1.1.1.1,Juniper,acx2100,lsw,Ha Tinh,user1,,e25519,
+BBBB,2.2.2.2,Cisco,asr920,lsw,Ha Tinh,user2,,rsa,
+CCCC,3.3.3.3,Ciena,3932,lsw,Ha Tinh,user3,,non,
