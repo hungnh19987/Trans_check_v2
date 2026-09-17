@@ -1,4 +1,4 @@
-"""Parser for Juniper optical diagnostics output."""
+"""Parsers for vendor optical diagnostics output."""
 
 from __future__ import annotations
 
@@ -11,7 +11,18 @@ class JuniperOptics:
     output_power: str
     rx_power: str
     rx_high_alarm_threshold: str
+    rx_low_alarm_threshold: str
+    rx_high_warning_threshold: str
     rx_low_warning_threshold: str
+
+
+@dataclass(frozen=True)
+class CiscoTransceiver:
+    temperature: str
+    voltage: str
+    current: str
+    tx_power: str
+    rx_power: str
 
 
 _VALUE_RE = r"([+-]?\d+(?:\.\d+)?)\s*dBm"
@@ -27,25 +38,44 @@ def _extract_dbm(raw_output: str, label_pattern: str) -> str | None:
 
 
 def parse_juniper_optics(raw_output: str) -> JuniperOptics | None:
-    """Extract the four optical values required by the Telegram response."""
-    output_power = _extract_dbm(raw_output, r"Laser\s+output\s+power")
-    rx_power = _extract_dbm(raw_output, r"Laser\s+(?:rx|receiver)\s+power")
-    rx_high_alarm = _extract_dbm(
-        raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+high\s+alarm\s+threshold"
-    )
-    # The requested Telegram format calls this the low alarm threshold, while
-    # the Juniper output provides the requested -26.99 dBm value as the low
-    # warning threshold (the actual low alarm value is -27.96 dBm).
-    rx_low_warning = _extract_dbm(
-        raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+low\s+warning\s+threshold"
-    )
-
-    if None in (output_power, rx_power, rx_high_alarm, rx_low_warning):
+    """Extract current power and all Juniper RX alarm/warning thresholds."""
+    values = {
+        "output_power": _extract_dbm(raw_output, r"Laser\s+output\s+power"),
+        "rx_power": _extract_dbm(raw_output, r"Laser\s+(?:rx|receiver)\s+power"),
+        "rx_high_alarm_threshold": _extract_dbm(
+            raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+high\s+alarm\s+threshold"
+        ),
+        "rx_low_alarm_threshold": _extract_dbm(
+            raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+low\s+alarm\s+threshold"
+        ),
+        "rx_high_warning_threshold": _extract_dbm(
+            raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+high\s+warning\s+threshold"
+        ),
+        "rx_low_warning_threshold": _extract_dbm(
+            raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+low\s+warning\s+threshold"
+        ),
+    }
+    if any(value is None for value in values.values()):
         return None
+    return JuniperOptics(**values)  # type: ignore[arg-type]
 
-    return JuniperOptics(
-        output_power=output_power,
-        rx_power=rx_power,
-        rx_high_alarm_threshold=rx_high_alarm,
-        rx_low_warning_threshold=rx_low_warning,
-    )
+
+_CISCO_ROW_RE = re.compile(
+    r"^\s*(?P<port>\S+)\s+"
+    r"(?P<temperature>\S+)\s+"
+    r"(?P<voltage>\S+)\s+"
+    r"(?P<current>\S+)\s+"
+    r"(?P<tx_power>\S+)\s+"
+    r"(?P<rx_power>\S+)\s*$"
+)
+
+
+def parse_cisco_transceiver(raw_output: str, interface: str) -> CiscoTransceiver | None:
+    """Parse the requested Cisco row from ``show interface transceiver``."""
+    for line in raw_output.splitlines():
+        match = _CISCO_ROW_RE.match(line)
+        if match and match.group("port") == interface:
+            values = match.groupdict()
+            values.pop("port")
+            return CiscoTransceiver(**values)
+    return None

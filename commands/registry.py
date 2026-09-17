@@ -1,8 +1,4 @@
-"""
-Command Registry.
-
-Ánh xạ: (function, vendor, model) -> CLI command thực thi trên thiết bị.
-"""
+"""Vendor command registry."""
 
 from __future__ import annotations
 
@@ -18,6 +14,7 @@ _VENDOR_COMMANDS: dict[tuple[str, str], str] = {
     ("checktd", "Cisco"): "show interfaces description",
     ("checktd", "Ciena"): "port show status",
     ("checktd_optics", "Juniper"): "show interfaces diagnostics optics {interface}",
+    ("checktd_optics", "Cisco"): "show interface transceiver",
 }
 
 _DEFAULT_COMMANDS: dict[str, str] = {}
@@ -30,14 +27,11 @@ class CommandRegistry:
         key_exact = (function, vendor, model)
         if key_exact in _VENDOR_MODEL_COMMANDS:
             return _VENDOR_MODEL_COMMANDS[key_exact]
-
         key_vendor = (function, vendor)
         if key_vendor in _VENDOR_COMMANDS:
             return _VENDOR_COMMANDS[key_vendor]
-
         if function in _DEFAULT_COMMANDS:
             return _DEFAULT_COMMANDS[function]
-
         raise CommandNotFoundError(
             f"Không tìm thấy command cho function='{function}', "
             f"vendor='{vendor}', model='{model}'. "

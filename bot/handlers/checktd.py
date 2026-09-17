@@ -1,10 +1,4 @@
-"""
-Optical diagnostics handler additions for /checktd.
-
-The existing hostname search and SSH pipeline remain unchanged. When the
-command has two arguments, it uses the same repository and SSH gateway to run
-Juniper's optical diagnostics command for the requested interface.
-"""
+"""Telegram handler for device and optical checks."""
 
 from __future__ import annotations
 
@@ -19,14 +13,14 @@ from telegram.ext import ContextTypes
 from bot.guard import is_allowed_chat
 from commands.registry import CommandNotFoundError, CommandRegistry
 from device.repository import DeviceRepository
-from formatter.optics import format_juniper_optics
+from formatter.optics import format_cisco_transceiver, format_juniper_optics
 from formatter.telegram import format_checktd_success_pages, format_error
 from parser.interface import (
     filter_physical_interfaces,
     parse_ciena_interface_description,
     parse_interface_description,
 )
-from parser.optics import parse_juniper_optics
+from parser.optics import parse_cisco_transceiver, parse_juniper_optics
 from ssh.gateway import SSHGateway
 from ssh.result import CommandResult, ResultStatus
 
@@ -50,13 +44,8 @@ class CheckTDHandler:
     async def handle_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not is_allowed_chat(update, self._allowed_group_id):
             return
-
         message = update.effective_message
         args = context.args or []
-
-        # New direct form: /checktd <hostname> <interface>.
-        # The old search-and-select form remains available when only one
-        # argument is supplied, preserving existing bot behaviour.
         if len(args) >= 2:
             if len(args) != 2:
                 await message.reply_text(
@@ -78,12 +67,10 @@ class CheckTDHandler:
                 'Hoặc dùng /checktd "tên gợi ý" để tìm thiết bị.'
             )
             return
-
         matches = self._device_repository.search_devices(query_text)
         if not matches:
             await message.reply_text(f'Không tìm thấy thiết bị nào khớp với "{query_text}".')
             return
-
         truncated = len(matches) > _MAX_SEARCH_RESULTS
         shown = matches[:_MAX_SEARCH_RESULTS]
         context.chat_data[_CHAT_DATA_CANDIDATES_KEY] = {
@@ -127,7 +114,8 @@ class CheckTDHandler:
         device = self._device_repository.get_device(hostname)
         if device is None:
             return format_error("KHÔNG THỂ KIỂM TRA QUANG", hostname, ResultStatus.DEVICE_NOT_FOUND)
-        if device.vendor.strip().lower() != "juniper":
+        vendor = device.vendor.strip().lower()
+        if vendor not in {"juniper", "cisco"}:
             return format_error("KHÔNG THỂ KIỂM TRA QUANG", hostname, ResultStatus.UNKNOWN_ERROR)
         try:
             command_template = self._command_registry.get_command(
@@ -135,7 +123,6 @@ class CheckTDHandler:
             )
         except CommandNotFoundError:
             return format_error("KHÔNG THỂ KIỂM TRA QUANG", hostname, ResultStatus.UNKNOWN_ERROR)
-
         command = command_template.format(interface=interface)
         result: CommandResult = await asyncio.to_thread(
             self._ssh_gateway.run_device_command, hostname, command,
@@ -149,10 +136,17 @@ class CheckTDHandler:
                     time.monotonic() - started)
         if result.status != ResultStatus.SUCCESS:
             return format_error("KHÔNG THỂ KIỂM TRA QUANG", hostname, result.status)
-        optics = parse_juniper_optics(result.stdout)
-        if optics is None:
+
+        if vendor == "juniper":
+            optics = parse_juniper_optics(result.stdout)
+            if optics is None:
+                return format_error("KHÔNG THỂ KIỂM TRA QUANG", hostname, ResultStatus.COMMAND_FAILED)
+            return format_juniper_optics(device, interface, optics)
+
+        transceiver = parse_cisco_transceiver(result.stdout, interface)
+        if transceiver is None:
             return format_error("KHÔNG THỂ KIỂM TRA QUANG", hostname, ResultStatus.COMMAND_FAILED)
-        return format_juniper_optics(device, interface, optics)
+        return format_cisco_transceiver(device, interface, transceiver)
 
     async def _check_device(self, hostname: str) -> list[str]:
         started = time.monotonic()
