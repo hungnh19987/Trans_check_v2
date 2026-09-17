@@ -15,6 +15,7 @@ _VENDOR_COMMANDS: dict[tuple[str, str], str] = {
     ("checktd", "Ciena"): "port show status",
     ("checktd_optics", "Juniper"): "show interfaces diagnostics optics {interface}",
     ("checktd_optics", "Cisco"): "show interface transceiver",
+    ("checktd_optics", "Ciena"): "port xcvr show port {interface}",
 }
 
 _DEFAULT_COMMANDS: dict[str, str] = {}
@@ -33,7 +34,5 @@ class CommandRegistry:
         if function in _DEFAULT_COMMANDS:
             return _DEFAULT_COMMANDS[function]
         raise CommandNotFoundError(
-            f"Không tìm thấy command cho function='{function}', "
-            f"vendor='{vendor}', model='{model}'. "
-            "Cần bổ sung ánh xạ trong commands/registry.py."
+            f"Không tìm thấy command cho function='{function}', vendor='{vendor}', model='{model}'."
         )

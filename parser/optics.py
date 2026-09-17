@@ -25,6 +25,15 @@ class CiscoTransceiver:
     rx_power: str
 
 
+@dataclass(frozen=True)
+class CienaOptics:
+    rx_power: str
+    rx_low_alarm_threshold: str
+    rx_high_alarm_threshold: str
+    rx_high_warning_threshold: str
+    rx_low_warning_threshold: str
+
+
 _VALUE_RE = r"([+-]?\d+(?:\.\d+)?)\s*dBm"
 
 
@@ -42,18 +51,10 @@ def parse_juniper_optics(raw_output: str) -> JuniperOptics | None:
     values = {
         "output_power": _extract_dbm(raw_output, r"Laser\s+output\s+power"),
         "rx_power": _extract_dbm(raw_output, r"Laser\s+(?:rx|receiver)\s+power"),
-        "rx_high_alarm_threshold": _extract_dbm(
-            raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+high\s+alarm\s+threshold"
-        ),
-        "rx_low_alarm_threshold": _extract_dbm(
-            raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+low\s+alarm\s+threshold"
-        ),
-        "rx_high_warning_threshold": _extract_dbm(
-            raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+high\s+warning\s+threshold"
-        ),
-        "rx_low_warning_threshold": _extract_dbm(
-            raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+low\s+warning\s+threshold"
-        ),
+        "rx_high_alarm_threshold": _extract_dbm(raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+high\s+alarm\s+threshold"),
+        "rx_low_alarm_threshold": _extract_dbm(raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+low\s+alarm\s+threshold"),
+        "rx_high_warning_threshold": _extract_dbm(raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+high\s+warning\s+threshold"),
+        "rx_low_warning_threshold": _extract_dbm(raw_output, r"Laser\s+(?:rx|receiver)\s+power\s+low\s+warning\s+threshold"),
     }
     if any(value is None for value in values.values()):
         return None
@@ -61,12 +62,8 @@ def parse_juniper_optics(raw_output: str) -> JuniperOptics | None:
 
 
 _CISCO_ROW_RE = re.compile(
-    r"^\s*(?P<port>\S+)\s+"
-    r"(?P<temperature>\S+)\s+"
-    r"(?P<voltage>\S+)\s+"
-    r"(?P<current>\S+)\s+"
-    r"(?P<tx_power>\S+)\s+"
-    r"(?P<rx_power>\S+)\s*$"
+    r"^\s*(?P<port>\S+)\s+(?P<temperature>\S+)\s+(?P<voltage>\S+)\s+"
+    r"(?P<current>\S+)\s+(?P<tx_power>\S+)\s+(?P<rx_power>\S+)\s*$"
 )
 
 
@@ -79,3 +76,39 @@ def parse_cisco_transceiver(raw_output: str, interface: str) -> CiscoTransceiver
             values.pop("port")
             return CiscoTransceiver(**values)
     return None
+
+
+def _extract_ciena_diagnostic_row(raw_output: str, label: str) -> tuple[str, str, str, str] | None:
+    """Return value, alarm-high, alarm-low, warning-high, warning-low."""
+    lines = raw_output.splitlines()
+    for index, line in enumerate(lines):
+        if not re.search(rf"^\s*\|\s*{re.escape(label)}\s*\|", line, re.IGNORECASE):
+            continue
+        fields = [field.strip() for field in line.strip().strip("|").split("|")]
+        if len(fields) >= 5:
+            # Main row: value, HIGH alarm, flag, HIGH warning, flag.
+            value = fields[1]
+            alarm_high = re.sub(r"^HIGH\s+", "", fields[2], flags=re.IGNORECASE)
+            warning_high = re.sub(r"^HIGH\s+", "", fields[4], flags=re.IGNORECASE)
+            low_line = lines[index + 1] if index + 1 < len(lines) else ""
+            low_fields = [field.strip() for field in low_line.strip().strip("|").split("|")]
+            if len(low_fields) >= 5:
+                alarm_low = re.sub(r"^LOW\s+", "", low_fields[2], flags=re.IGNORECASE)
+                warning_low = re.sub(r"^LOW\s+", "", low_fields[4], flags=re.IGNORECASE)
+                return value, alarm_high, alarm_low, warning_high, warning_low
+    return None
+
+
+def parse_ciena_optics(raw_output: str) -> CienaOptics | None:
+    """Parse Ciena ``port xcvr show port <id>`` diagnostics."""
+    row = _extract_ciena_diagnostic_row(raw_output, r"Rx Power \(dBm\)")
+    if row is None:
+        return None
+    value, alarm_high, alarm_low, warning_high, warning_low = row
+    return CienaOptics(
+        rx_power=value,
+        rx_low_alarm_threshold=alarm_low,
+        rx_high_alarm_threshold=alarm_high,
+        rx_high_warning_threshold=warning_high,
+        rx_low_warning_threshold=warning_low,
+    )
