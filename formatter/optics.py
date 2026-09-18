@@ -13,7 +13,7 @@ def _code_block(text: str) -> str:
 
 
 def format_juniper_optics(device: Device, interface: str, optics: JuniperOptics) -> str:
-    text = (
+    return _code_block(
         f"Thiết bị: {device.hostname}\nCổng: {interface}\n"
         f"Laser output power: {optics.output_power} dBm\n"
         f"Laser rx power: {optics.rx_power} dBm\n"
@@ -22,11 +22,10 @@ def format_juniper_optics(device: Device, interface: str, optics: JuniperOptics)
         f"Laser rx power high warning threshold: {optics.rx_high_warning_threshold} dBm\n"
         f"Laser rx power low warning threshold: {optics.rx_low_warning_threshold} dBm"
     )
-    return _code_block(text)
 
 
 def format_cisco_transceiver(device: Device, interface: str, transceiver: CiscoTransceiver) -> str:
-    text = (
+    return _code_block(
         f"Tên thiết bị: {device.hostname}\nCổng: {interface}\n\n"
         f"Temperature (Celsius): {transceiver.temperature}\n"
         f"Voltage (Volts): {transceiver.voltage}\n"
@@ -34,11 +33,10 @@ def format_cisco_transceiver(device: Device, interface: str, transceiver: CiscoT
         f"Optical Tx Power (dBm): {transceiver.tx_power}\n"
         f"Optical Rx Power (dBm): {transceiver.rx_power}"
     )
-    return _code_block(text)
 
 
 def format_ciena_optics(device: Device, port: str, optics: CienaOptics) -> str:
-    text = (
+    return _code_block(
         f"Thiết bị: {device.hostname}\nCổng: {port}\n"
         f"Rx Power (dBm): {optics.rx_power}\n"
         f"Alarm Rx LOW: {optics.rx_low_alarm_threshold}\n"
@@ -46,4 +44,3 @@ def format_ciena_optics(device: Device, port: str, optics: CienaOptics) -> str:
         f"Warning Rx HIGH: {optics.rx_high_warning_threshold}\n"
         f"Warning Rx LOW: {optics.rx_low_warning_threshold}"
     )
-    return _code_block(text)

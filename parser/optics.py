@@ -47,7 +47,6 @@ def _extract_dbm(raw_output: str, label_pattern: str) -> str | None:
 
 
 def parse_juniper_optics(raw_output: str) -> JuniperOptics | None:
-    """Extract current power and all Juniper RX alarm/warning thresholds."""
     values = {
         "output_power": _extract_dbm(raw_output, r"Laser\s+output\s+power"),
         "rx_power": _extract_dbm(raw_output, r"Laser\s+(?:rx|receiver)\s+power"),
@@ -68,7 +67,6 @@ _CISCO_ROW_RE = re.compile(
 
 
 def parse_cisco_transceiver(raw_output: str, interface: str) -> CiscoTransceiver | None:
-    """Parse the requested Cisco row from ``show interface transceiver``."""
     for line in raw_output.splitlines():
         match = _CISCO_ROW_RE.match(line)
         if match and match.group("port") == interface:
@@ -78,37 +76,33 @@ def parse_cisco_transceiver(raw_output: str, interface: str) -> CiscoTransceiver
     return None
 
 
-def _extract_ciena_diagnostic_row(raw_output: str, label: str) -> tuple[str, str, str, str] | None:
-    """Return value, alarm-high, alarm-low, warning-high, warning-low."""
+def _extract_ciena_diagnostic_row(raw_output: str) -> tuple[str, str, str, str, str] | None:
+    """Parse the two physical rows belonging to Rx Power (dBm)."""
     lines = raw_output.splitlines()
     for index, line in enumerate(lines):
-        if not re.search(rf"^\s*\|\s*{re.escape(label)}\s*\|", line, re.IGNORECASE):
+        # Do not escape an already-regex label; this accepts spacing variants.
+        if not re.search(r"^\s*\|\s*Rx\s+Power\s+\(dBm\)\s*\|", line, re.IGNORECASE):
             continue
         fields = [field.strip() for field in line.strip().strip("|").split("|")]
-        if len(fields) >= 5:
-            # Main row: value, HIGH alarm, flag, HIGH warning, flag.
-            value = fields[1]
-            alarm_high = re.sub(r"^HIGH\s+", "", fields[2], flags=re.IGNORECASE)
-            warning_high = re.sub(r"^HIGH\s+", "", fields[4], flags=re.IGNORECASE)
-            low_line = lines[index + 1] if index + 1 < len(lines) else ""
-            low_fields = [field.strip() for field in low_line.strip().strip("|").split("|")]
-            if len(low_fields) >= 5:
-                alarm_low = re.sub(r"^LOW\s+", "", low_fields[2], flags=re.IGNORECASE)
-                warning_low = re.sub(r"^LOW\s+", "", low_fields[4], flags=re.IGNORECASE)
-                return value, alarm_high, alarm_low, warning_high, warning_low
+        if len(fields) < 5:
+            continue
+        low_line = lines[index + 1] if index + 1 < len(lines) else ""
+        low_fields = [field.strip() for field in low_line.strip().strip("|").split("|")]
+        if len(low_fields) < 5:
+            continue
+        return (
+            fields[1],
+            re.sub(r"^HIGH\s+", "", fields[2], flags=re.IGNORECASE),
+            re.sub(r"^LOW\s+", "", low_fields[2], flags=re.IGNORECASE),
+            re.sub(r"^HIGH\s+", "", fields[4], flags=re.IGNORECASE),
+            re.sub(r"^LOW\s+", "", low_fields[4], flags=re.IGNORECASE),
+        )
     return None
 
 
 def parse_ciena_optics(raw_output: str) -> CienaOptics | None:
-    """Parse Ciena ``port xcvr show port <id>`` diagnostics."""
-    row = _extract_ciena_diagnostic_row(raw_output, r"Rx Power \(dBm\)")
+    row = _extract_ciena_diagnostic_row(raw_output)
     if row is None:
         return None
     value, alarm_high, alarm_low, warning_high, warning_low = row
-    return CienaOptics(
-        rx_power=value,
-        rx_low_alarm_threshold=alarm_low,
-        rx_high_alarm_threshold=alarm_high,
-        rx_high_warning_threshold=warning_high,
-        rx_low_warning_threshold=warning_low,
-    )
+    return CienaOptics(value, alarm_low, alarm_high, warning_high, warning_low)
