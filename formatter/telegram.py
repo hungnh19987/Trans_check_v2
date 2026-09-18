@@ -8,19 +8,15 @@ hoặc thông tin xác thực.
 Định dạng theo mẫu:
 
     🔌 LSW_NA_TKY_KY_SON
+    🏷 Vendor: <code>Juniper</code>
     ━━━━━━━━━━━━━━━━━━━━
 
-    🟢 Gi0/0/0
-       TO_NA_TKY_KY_SON_PO_NA_TY_NoiSite/FO/MBF
+    🟢 <code>Gi0/0/0</code>
+       <code>TO_NA_TKY_KY_SON_PO_NA_TY_NoiSite/FO/MBF</code>
 
-    🟢 Gi0/0/1
-       TO_NA_TKY_TAN_HUONG_2_4G_PO_NA_TY_Noitinh/FO/MBF
-
-    ━━━━━━━━━━━━━━━━━━━━
-    📊 Tổng: 2 port | UP: 2 | DOWN: 0
-
-Tên thiết bị và tên cổng được bọc trong thẻ HTML <code> để Telegram hiển
-thị dạng monospace và cho phép chạm để copy trên di động.
+Tên thiết bị, vendor, interface và description được bọc trong thẻ HTML
+<code> để Telegram hiển thị dạng monospace và cho phép chạm để copy trên
+thiết bị di động.
 """
 
 from __future__ import annotations
@@ -65,18 +61,18 @@ def _is_up(row: InterfaceRow) -> bool:
 
 def _build_interface_blocks(rows: list[InterfaceRow]) -> list[list[str]]:
     """
-    Mỗi interface -> MỘT khối gồm 1-2 dòng (đã html-escape sẵn):
-        🟢/🔴 {interface}
-           {description}   (bỏ dòng này nếu description rỗng)
+    Mỗi interface -> MỘT khối gồm 1-2 dòng (đã HTML-escape sẵn):
+        🟢/🔴 <code>{interface}</code>
+           <code>{description}</code> (bỏ dòng này nếu description rỗng)
     """
     blocks: list[list[str]] = []
-    for r in rows:
-        emoji = "🟢" if _is_up(r) else "🔴"
-        line1 = f"{emoji} <code>{html.escape(r.interface)}</code>"
+    for row in rows:
+        emoji = "🟢" if _is_up(row) else "🔴"
+        line1 = f"{emoji} <code>{html.escape(row.interface)}</code>"
         block = [line1]
-        desc = r.description.strip()
-        if desc:
-            block.append(f"   {html.escape(desc)}")
+        description = row.description.strip()
+        if description:
+            block.append(f"   <code>{html.escape(description)}</code>")
         blocks.append(block)
     return blocks
 
@@ -89,12 +85,15 @@ def format_checktd_success_pages(
     """
     Format kết quả /checktd thành MỘT DANH SÁCH tin nhắn (thường chỉ 1 phần
     tử). Nếu danh sách interface quá dài, tự động chia thành nhiều tin nhắn
-    để không vượt quá giới hạn 4096 ký tự/tin nhắn của Telegram
-    (telegram.error.BadRequest: "Message is too long"). Mỗi khối interface
-    (1-2 dòng) luôn được giữ NGUYÊN VẸN trong cùng một trang.
+    để không vượt quá giới hạn 4096 ký tự/tin nhắn của Telegram.
     """
     hostname_esc = html.escape(device.hostname)
-    header_block = f"🔌 <code>{hostname_esc}</code>\n{_SEPARATOR}"
+    vendor_esc = html.escape(device.vendor.strip() or "Không xác định")
+    header_block = (
+        f"🔌 <code>{hostname_esc}</code>\n"
+        f"🏷 Vendor: <code>{vendor_esc}</code>\n"
+        f"{_SEPARATOR}"
+    )
 
     footer_block: str | None
     wrap_pre: bool
@@ -102,7 +101,7 @@ def format_checktd_success_pages(
     if interface_rows is not None:
         if interface_rows:
             blocks = _build_interface_blocks(interface_rows)
-            up_count = sum(1 for r in interface_rows if _is_up(r))
+            up_count = sum(1 for row in interface_rows if _is_up(row))
             down_count = len(interface_rows) - up_count
             footer_block = (
                 f"{_SEPARATOR}\n"
@@ -113,9 +112,7 @@ def format_checktd_success_pages(
             footer_block = f"{_SEPARATOR}\n📊 Tổng: 0 port | UP: 0 | DOWN: 0"
         wrap_pre = False
     else:
-        # Không parse được (vendor/model chưa có parser tương ứng) -> hiển
-        # thị raw output nguyên văn. Không có dữ liệu trạng thái có cấu
-        # trúc nên không hiển thị dòng tổng UP/DOWN.
+        # Không parse được -> hiển thị raw output nguyên văn.
         raw_text = result.stdout.strip() or "(không có output)"
         blocks = [[line] for line in (raw_text.splitlines() or [""])]
         footer_block = None
@@ -132,18 +129,17 @@ def format_checktd_success_pages(
         if page_idx == 0:
             head = header_block + "\n\n"
         else:
-            head = f"🔌 <code>{hostname_esc}</code> (trang {page_idx + 1}/{total_pages})\n\n"
+            head = (
+                f"🔌 <code>{hostname_esc}</code> "
+                f"🏷 <code>{vendor_esc}</code> "
+                f"(trang {page_idx + 1}/{total_pages})\n\n"
+            )
 
         body = render_body(page_blocks)
-
         is_last = page_idx == total_pages - 1
         tail = f"\n\n{footer_block}" if (is_last and footer_block) else ""
-
         return head + body + tail
 
-    # Gói (pack) từng KHỐI (nguyên vẹn, không tách rời) vào từng trang, đảm
-    # bảo mỗi trang (ước lượng ở trường hợp xấu nhất: có header đầy đủ +
-    # footer) không vượt giới hạn.
     pages_blocks: list[list[list[str]]] = []
     current: list[list[str]] = []
     for block in blocks:
@@ -157,4 +153,4 @@ def format_checktd_success_pages(
     pages_blocks.append(current)
 
     total_pages = len(pages_blocks)
-    return [page_text(pb, idx, total_pages) for idx, pb in enumerate(pages_blocks)]
+    return [page_text(page_blocks, idx, total_pages) for idx, page_blocks in enumerate(pages_blocks)]
